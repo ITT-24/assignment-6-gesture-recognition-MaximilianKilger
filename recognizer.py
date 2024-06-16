@@ -18,55 +18,11 @@ import xml.etree.ElementTree as ET
 
 import pyglet
 
+import json
+
 NUM_POINTS = 64
 
-# read Data
-data = []
-data_X = []
-data_y = []
 
-for root, subdirs, files in os.walk('xml_logs'):
-    if 'ipynb_checkpoint' in root:
-        continue
-    
-    if len(files) > 0:
-        for f in tqdm(files):
-            if '.xml' in f:
-                fname = f.split('.')[0]
-                label = fname[:-2]
-                
-                xml_root = ET.parse(f'{root}/{f}').getroot()
-                
-                points = []
-                for element in xml_root.findall('Point'):
-                    x = element.get('X')
-                    y = element.get('Y')
-                    points.append([x, y])
-                    
-                points = np.array(points, dtype=float)
-                
-                scaler = StandardScaler()
-                points = scaler.fit_transform(points)
-                
-                resampled = resample(points, NUM_POINTS)
-                
-                data_X.append(resampled)
-                data_y.append(label)
-    
-data_X = np.array(data_X)
-data_y = np.array(data_y)
-
-
-train_X, test_X, train_y, test_y = train_test_split(data_X, data_y, test_size=0.05, random_state=445)
-
-# train templates
-templates = {}
-for label in np.unique(test_y):
-    examples = test_X[test_y == label]
-    template = np.median(examples, axis=0)
-    templates[label] = template
-    #plt.plot(template.T[0], template.T[1]*-1)
-    #plt.show()
 
 
 #returns the euclidian distance between points (x1, y1) and (x2, y2)
@@ -121,6 +77,15 @@ def preprocess(points:np.ndarray):
     points = scale_to(points, size)
     return points
 
+def calculate_score(gesture:np.ndarray, template:np.ndarray):
+    score = 0
+    for i in range(len(gesture)):
+        pt_gesture = gesture[i]
+        pt_template = template[i]
+        distance = euclidian(pt_gesture, pt_template)
+        score += distance
+    return score
+
 def classify (gesture:np.ndarray, templates:np.ndarray):
     best_score = 9999999999999999999999999
     best_label = None
@@ -130,12 +95,7 @@ def classify (gesture:np.ndarray, templates:np.ndarray):
         gesture = preprocess(gesture)
         template = preprocess(template)
         if len(gesture) == len(template):
-            score = 0
-            for i in range(len(gesture)):
-                pt_gesture = gesture[i]
-                pt_template = template[i]
-                distance = euclidian(pt_gesture, pt_template)
-                score += distance
+            score = min(calculate_score(gesture, template), calculate_score(np.flip(gesture, axis=0), template))
             if score < best_score:
                 best_score = score
                 best_label = label
@@ -144,85 +104,142 @@ def classify (gesture:np.ndarray, templates:np.ndarray):
     return best_label, best_score
 
 
-predicted = []
-for i, gesture in enumerate(tqdm(test_X)):
-    pred_label, score = classify(gesture, templates)
-    predicted.append(pred_label)
+if __name__ == "__main__":
+    TEMPLATE_FILE_PATH = "templates.json"
+    
+    TRAIN = "-T" in sys.argv[1:]
+    SAVE_GESTURE_TEMPLATES = "-S" in sys.argv
+    OPEN_APPLICATION = "-A" in sys.argv
+    
 
-acc = accuracy_score(test_y, predicted)
+    
+    if TRAIN:
+        # read Data
+        data = []
+        data_X = []
+        data_y = []
 
-print(f"Classifier has accuracy of {acc}!")
-
-WIDTH = 900
-HEIGHT = 600
-
-window = pyglet.window.Window(width=WIDTH, height=HEIGHT)
-
-drawn_shape:list[np.ndarray] = []
-lines:list[pyglet.shapes.Line] = []
-linebatch = pyglet.shapes.Batch()
-linecolor = (255,0,0)
-linewidth = 3
-
-background = pyglet.shapes.Rectangle(0,0,WIDTH,HEIGHT,(255,255,255))
-
-textcolor = (128, 0, 128, 255)
-prediction_label = pyglet.text.Label("ASDASDASDASD", "Arial", 30, x=0,y=HEIGHT*0.9,width=WIDTH, height=HEIGHT/10, color=textcolor)
-
-min_points_for_prediction = 10
-
-is_mouse_down = False
-
-def add_point(x, y):
-    pt = np.array([x,y])
-    if len(drawn_shape) > 0:
-        last_pt = drawn_shape[-1]
-        line = pyglet.shapes.Line(x, y, last_pt[0], HEIGHT - last_pt[1], linewidth, linecolor, batch=linebatch)
-        lines.append(line)
-    drawn_shape.append(np.array((pt[0], HEIGHT-pt[1])))
-
-@window.event
-def on_draw():
-    global prediction_label
-    window.clear()
-    background.draw()
-    linebatch.draw()
-    if len(drawn_shape) >= min_points_for_prediction:
-        label, score = classify(drawn_shape, templates)
-
-        prediction_label.text = f"{label} : {round(score,2)}"
-    prediction_label.draw()
+        for root, subdirs, files in os.walk('xml_logs'):
+            if 'ipynb_checkpoint' in root:
+                continue
+            
+            if len(files) > 0:
+                for f in tqdm(files):
+                    if '.xml' in f:
+                        fname = f.split('.')[0]
+                        label = fname[:-2]
+                        
+                        xml_root = ET.parse(f'{root}/{f}').getroot()
+                        
+                        points = []
+                        for element in xml_root.findall('Point'):
+                            x = element.get('X')
+                            y = element.get('Y')
+                            points.append([x, y])
+                            
+                        points = np.array(points, dtype=float)
+                        
+                        scaler = StandardScaler()
+                        points = scaler.fit_transform(points)
+                        
+                        resampled = resample(points, NUM_POINTS)
+                        
+                        data_X.append(resampled)
+                        data_y.append(label)
+            
+        data_X = np.array(data_X)
+        data_y = np.array(data_y)
 
 
+        train_X, test_X, train_y, test_y = train_test_split(data_X, data_y, test_size=0.05, random_state=445)
+
+        # train templates
+        templates = {}
+        for label in np.unique(data_y):
+            examples = data_X[data_y == label]
+            template = np.mean(examples, axis=0)
+            templates[label] = template
+            plt.plot(template.T[0], template.T[1]*-1)
+            plt.show()
+
+        if SAVE_GESTURE_TEMPLATES:
+            with open(TEMPLATE_FILE_PATH, "w") as f:
+                templates_serializable = {}
+                for label in templates.keys():
+                    templates_serializable[label] = templates[label].tolist()
+                json.dump(templates_serializable, f)
 
 
-@window.event
-def on_mouse_press(x,y, button, modifiers):
-    global linebatch
-    global lines
-    global is_mouse_down
-    global drawn_shape
-    if button == pyglet.window.mouse.LEFT:
-        lines = []
-        drawn_shape = []
-        linebatch.invalidate()
-        linebatch = pyglet.shapes.Batch()
-        is_mouse_down = True
-        add_point(x,y)
-        print("DOWN")
+    WIDTH = 900
+    HEIGHT = 600
 
-@window.event
-def on_mouse_drag(x,y, dx, dy, button, modifiers):
-    global is_mouse_down
-    if button == pyglet.window.mouse.LEFT and is_mouse_down:
-        print("DRAG")
-        add_point(x,y)
+    window = pyglet.window.Window(width=WIDTH, height=HEIGHT)
 
-@window.event
-def on_mouse_release(x,y, button, modifiers):
-    global is_mouse_down
-    if button == pyglet.window.mouse.LEFT:
-        is_mouse_down = False
-        print("UP")
+    drawn_shape:list[np.ndarray] = []
+    lines:list[pyglet.shapes.Line] = []
+    linebatch = pyglet.shapes.Batch()
+    linecolor = (255,0,0)
+    linewidth = 3
 
-pyglet.app.run()
+    background = pyglet.shapes.Rectangle(0,0,WIDTH,HEIGHT,(255,255,255))
+
+    textcolor = (128, 0, 128, 255)
+    prediction_label = pyglet.text.Label("ASDASDASDASD", "Arial", 30, x=0,y=HEIGHT*0.9,width=WIDTH, height=HEIGHT/10, color=textcolor)
+
+    min_points_for_prediction = 10
+
+    is_mouse_down = False
+
+    def add_point(x, y):
+        pt = np.array([x,y])
+        if len(drawn_shape) > 0:
+            last_pt = drawn_shape[-1]
+            line = pyglet.shapes.Line(x, y, last_pt[0], HEIGHT - last_pt[1], linewidth, linecolor, batch=linebatch)
+            lines.append(line)
+        drawn_shape.append(np.array((pt[0], HEIGHT-pt[1])))
+
+    @window.event
+    def on_draw():
+        global prediction_label
+        window.clear()
+        background.draw()
+        linebatch.draw()
+        if len(drawn_shape) >= min_points_for_prediction:
+            label, score = classify(drawn_shape, templates)
+
+            prediction_label.text = f"{label} : {round(score,2)}"
+        prediction_label.draw()
+
+
+
+
+    @window.event
+    def on_mouse_press(x,y, button, modifiers):
+        global linebatch
+        global lines
+        global is_mouse_down
+        global drawn_shape
+        if button == pyglet.window.mouse.LEFT:
+            lines = []
+            drawn_shape = []
+            linebatch.invalidate()
+            linebatch = pyglet.shapes.Batch()
+            is_mouse_down = True
+            add_point(x,y)
+
+    @window.event
+    def on_mouse_drag(x,y, dx, dy, button, modifiers):
+        global is_mouse_down
+        if button == pyglet.window.mouse.LEFT and is_mouse_down:
+            print("DRAG")
+            add_point(x,y)
+
+    @window.event
+    def on_mouse_release(x,y, button, modifiers):
+        global is_mouse_down
+        if button == pyglet.window.mouse.LEFT:
+            is_mouse_down = False
+            print("UP")
+    if OPEN_APPLICATION:
+        pyglet.app.run()
+
