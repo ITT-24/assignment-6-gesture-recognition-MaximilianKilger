@@ -20,6 +20,14 @@ from recognizer import classify
 
 TEMPLATES_FILEPATH = "templates_media_controller.json"
 
+ICON_FILEPATHS = {
+    "next":"icons/fastforward.png",
+    "previous":"icons/reverse2.png",
+    "vol_up": "icons/volume_up.png",
+    "vol_down": "icons/volume_down.png",
+    "play": "icons/play-pause.png"
+}
+
 WINDOW_WIDTH:int = 200
 WINDOW_HEIGHT:int = 200
 
@@ -38,6 +46,23 @@ linecolor = (168, 40, 60)
 linewidth = 3
 
 background = pyglet.shapes.Rectangle(0,0,WINDOW_WIDTH, WINDOW_HEIGHT,(255,255,255))
+
+action_icons = {}
+for action in ICON_FILEPATHS.keys():
+    action_icons[action] = pyglet.image.load(ICON_FILEPATHS[action])
+
+icon_sprite = pyglet.sprite.Sprite(action_icons["play"], 0,0)
+icon_sprite.opacity = 0
+
+icon_base_size = 50
+icon_base_opacity = 128
+icon_growth_rate = 3
+icon_fade_rate = 2
+
+# keeps track of the number of times volume was increased using this application to protect the correctors' eardrums
+MAXIMUM_ALLOWED_VOLUME_INCREASE = 50
+internal_volume_counter = 0
+
 
 min_points_for_prediction = 10
 
@@ -68,21 +93,48 @@ kcontrol = Controller()
 
 def parse_gesture(gesture):
     if gesture == "caret":
-        kcontrol.press(Key.media_volume_up)
-    if gesture == "v":
+        if internal_volume_counter < MAXIMUM_ALLOWED_VOLUME_INCREASE:
+            kcontrol.press(Key.media_volume_up)
+            icon_sprite.image = action_icons["vol_up"]
+            internal_volume_counter += 1
+
+    elif gesture == "v":
         kcontrol.press(Key.media_volume_down)
-    if gesture == "triangle" or gesture == "rectangle":
+        icon_sprite.image = action_icons["vol_down"]
+        internal_volume_counter -= 1
+
+    elif gesture == "triangle" or gesture == "rectangle":
         kcontrol.press(Key.media_play_pause)
-    if gesture == "check":
+        icon_sprite.image = action_icons["play"]
+
+    elif gesture == "check":
         kcontrol.press(Key.media_next)
-    if gesture == "circle":
+        icon_sprite.image = action_icons["next"]
+
+    elif gesture == "circle":
         kcontrol.press(Key.media_previous)
+        icon_sprite.image = action_icons["previous"]
+
+def animate_icon(dt=0):
+    if icon_sprite.opacity > 0:
+        icon_sprite.opacity = max(0, icon_sprite.opacity - icon_fade_rate)
+        icon_sprite.width = icon_sprite.width + icon_growth_rate
+        icon_sprite.height = icon_sprite.height + icon_growth_rate
+        
+        # recenter
+        icon_sprite.x = (WINDOW_WIDTH - icon_sprite.width) / 2
+        icon_sprite.y = (WINDOW_HEIGHT - icon_sprite.height) / 2
+        
+animation_interval = 0.2
+pyglet.clock.schedule_interval(animate_icon,animation_interval)
 
 @window.event
 def on_draw():
     window.clear()
     background.draw()
     linebatch.draw()
+    icon_sprite.draw()
+    animate_icon()
 
 @window.event
 def on_key_press(key, modifiers):
@@ -121,6 +173,14 @@ def on_mouse_release(x,y, button, modifiers):
             label, score = classify(drawn_shape, templates)
             print(label)
             parse_gesture(label)
+
+            icon_sprite.opacity = icon_base_opacity
+            icon_sprite.width = icon_base_size
+            icon_sprite.height = icon_base_size
+        
+            # recenter
+            icon_sprite.x = (WINDOW_WIDTH - icon_sprite.width) / 2
+            icon_sprite.y = (WINDOW_HEIGHT - icon_sprite.height) / 2
 
 
 
