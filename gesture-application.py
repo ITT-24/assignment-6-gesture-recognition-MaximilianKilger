@@ -12,7 +12,7 @@ import sys, math
 
 import pyglet
 
-from pynput.keyboard import Key, Listener, GlobalHotKeys, Controller
+from pynput.keyboard import Key, Listener, GlobalHotKeys, Controller, HotKey
 #from pynput import keyboard
 import json
 
@@ -84,14 +84,30 @@ def add_point(x, y):
     drawn_shape.append(np.array((pt[0], WINDOW_HEIGHT-pt[1])))
 
 
-listener =  GlobalHotKeys({
-    '<ctrl>+<alt>+w': on_window_toggle})
-listener.start()
+#listener =  GlobalHotKeys({
+#    '<ctrl>+<alt>+w': on_window_toggle})
+#listener.start()
 
 kcontrol = Controller()
 
 
+
+def on_activate():
+    on_window_toggle()
+
+def for_canonical(f):
+    return lambda k: f(l.canonical(k))
+
+hotkey = HotKey(
+    HotKey.parse('<ctrl>+<alt>+w'),
+    on_activate)
+l = Listener(
+        on_press=for_canonical(hotkey.press),
+        on_release=for_canonical(hotkey.release))
+l.start()
+
 def parse_gesture(gesture):
+    global internal_volume_counter
     if gesture == "caret":
         if internal_volume_counter < MAXIMUM_ALLOWED_VOLUME_INCREASE:
             kcontrol.press(Key.media_volume_up)
