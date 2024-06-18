@@ -20,6 +20,8 @@ import pyglet
 
 import json
 
+import time
+
 NUM_POINTS = 64
 
 
@@ -106,13 +108,15 @@ def classify (gesture:np.ndarray, templates:np.ndarray):
 
 if __name__ == "__main__":
     TEMPLATE_FILE_PATH = "templates.json"
+    GESTURE_DIR_PATH = "test"
     
     TRAIN = "-T" in sys.argv[1:]
     SAVE_GESTURE_TEMPLATES = "-S" in sys.argv
     OPEN_APPLICATION = "-A" in sys.argv
+    RECORD_GESTURES = "-R" in sys.argv
     
 
-    
+    templates = {}
     if TRAIN:
         # read Data
         data = []
@@ -168,6 +172,15 @@ if __name__ == "__main__":
                 for label in templates.keys():
                     templates_serializable[label] = templates[label].tolist()
                 json.dump(templates_serializable, f)
+    else:
+        templates = {}
+        
+        with open(TEMPLATE_FILE_PATH) as f:
+            templates = json.load(f)
+        for label in templates.keys():
+            points = templates[label]
+            print(len(points))
+            templates[label] = np.asarray(points)
 
 
     WIDTH = 900
@@ -184,11 +197,12 @@ if __name__ == "__main__":
     background = pyglet.shapes.Rectangle(0,0,WIDTH,HEIGHT,(255,255,255))
 
     textcolor = (128, 0, 128, 255)
-    prediction_label = pyglet.text.Label("ASDASDASDASD", "Arial", 30, x=0,y=HEIGHT*0.9,width=WIDTH, height=HEIGHT/10, color=textcolor)
+    prediction_label = pyglet.text.Label("", "Arial", 30, x=0,y=HEIGHT*0.9,width=WIDTH, height=HEIGHT/10, color=textcolor)
 
     min_points_for_prediction = 10
 
     is_mouse_down = False
+    gestures_saved = []
 
     def add_point(x, y):
         pt = np.array([x,y])
@@ -196,7 +210,33 @@ if __name__ == "__main__":
             last_pt = drawn_shape[-1]
             line = pyglet.shapes.Line(x, y, last_pt[0], HEIGHT - last_pt[1], linewidth, linecolor, batch=linebatch)
             lines.append(line)
-        drawn_shape.append(np.array((pt[0], HEIGHT-pt[1])))
+        if RECORD_GESTURES:
+            drawn_shape.append(np.array((pt[0], HEIGHT-pt[1], time.time())))
+        else:
+            drawn_shape.append(np.array((pt[0], HEIGHT-pt[1])))
+    
+    def save_gestures_xml (gestures, gesture_name, directory):
+        for i, gesture in enumerate(gestures):
+            zero_string = "0"
+            name = f"{gesture_name}{str(i+1) if i+1 >= 10 else ''.join([zero_string,str(i+1)])}"
+            root = ET.Element("Gesture")
+            attrib = {
+                "Name": name
+            }
+            root.attrib = attrib
+
+            for point in gesture:
+                pt = ET.SubElement(root,"Point")
+                pt.attrib = {
+                    "X": str(int(point[0])),
+                    "Y": str(int(point[1])),
+                    "T": str(int(point[2]))
+                }
+            tree = ET.ElementTree(root)
+            fname = os.path.join(GESTURE_DIR_PATH,f"{name}.xml")
+            tree.write(fname,encoding="utf-8", xml_declaration=True)
+
+
 
     @window.event
     def on_draw():
@@ -210,6 +250,19 @@ if __name__ == "__main__":
             prediction_label.text = f"{label} : {round(score,2)}"
         prediction_label.draw()
 
+    @window.event
+    def on_key_press(key, modifiers):
+        if key == pyglet.window.key.Q:
+            os._exit()
+        elif key == pyglet.window.key.S and RECORD_GESTURES:
+            gesture_name = "question_mark"
+            save_gestures_xml(gestures_saved, gesture_name, GESTURE_DIR_PATH)
+            pass # TODO: SAVE ALL RECORDED GESTURES
+        elif key == pyglet.window.key.ENTER:
+            drawn_shape_list = []
+            for point in drawn_shape:
+                drawn_shape_list.append(point.tolist())
+            gestures_saved.append(drawn_shape_list)
 
 
 
@@ -231,7 +284,7 @@ if __name__ == "__main__":
     def on_mouse_drag(x,y, dx, dy, button, modifiers):
         global is_mouse_down
         if button == pyglet.window.mouse.LEFT and is_mouse_down:
-            print("DRAG")
+            #print("DRAG")
             add_point(x,y)
 
     @window.event
@@ -239,7 +292,7 @@ if __name__ == "__main__":
         global is_mouse_down
         if button == pyglet.window.mouse.LEFT:
             is_mouse_down = False
-            print("UP")
+            #print("UP")
     if OPEN_APPLICATION:
         pyglet.app.run()
 
