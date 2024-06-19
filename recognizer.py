@@ -71,9 +71,9 @@ def scale_to(points:np.ndarray, new_size:tuple[int,int]):
 
     return points
 
-def preprocess(points:np.ndarray):
-    size = (100,100)
-    points = resample(points, NUM_POINTS)
+def preprocess(points:np.ndarray, num_points:int=NUM_POINTS, size_x:int=100, size_y:int=100):
+    size = (size_x,size_y)
+    points = resample(points, num_points)
     points, centroid = shift_to_centroid(points)
     points = rotate_to_zero(points)
     points = scale_to(points, size)
@@ -88,14 +88,25 @@ def calculate_score(gesture:np.ndarray, template:np.ndarray):
         score += distance
     return score
 
+def train_templates(daataa_X:np.ndarray, daataa_y:np.ndarray):
+    # train templates
+    templates = {}
+    for label in np.unique(daataa_y):
+        examples = daataa_X[daataa_y == label]
+        template = np.mean(examples, axis=0)
+        templates[label] = template
+        plt.plot(template.T[0], template.T[1]*-1)
+        plt.show()  
+    return templates
+
 def classify (gesture:np.ndarray, templates:np.ndarray):
     best_score = 9999999999999999999999999
     best_label = None
     for label in templates.keys():
         template = templates[label]
 
-        gesture = preprocess(gesture)
-        template = preprocess(template)
+        gesture = preprocess(gesture,NUM_POINTS)
+        template = preprocess(template, NUM_POINTS)
         if len(gesture) == len(template):
             score = min(calculate_score(gesture, template), calculate_score(np.flip(gesture, axis=0), template))
             if score < best_score:
@@ -156,15 +167,7 @@ if __name__ == "__main__":
 
 
         train_X, test_X, train_y, test_y = train_test_split(data_X, data_y, test_size=0.05, random_state=445)
-
-        # train templates
-        templates = {}
-        for label in np.unique(data_y):
-            examples = data_X[data_y == label]
-            template = np.mean(examples, axis=0)
-            templates[label] = template
-            plt.plot(template.T[0], template.T[1]*-1)
-            plt.show()
+        templates = train_templates(train_X, train_y)
 
         if SAVE_GESTURE_TEMPLATES:
             with open(TEMPLATE_FILE_PATH, "w") as f:
