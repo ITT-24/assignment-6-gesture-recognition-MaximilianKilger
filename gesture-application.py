@@ -111,24 +111,29 @@ def parse_gesture(gesture):
     if gesture == "caret":
         if internal_volume_counter < MAXIMUM_ALLOWED_VOLUME_INCREASE:
             kcontrol.press(Key.media_volume_up)
+            kcontrol.release(Key.media_volume_up)
             icon_sprite.image = action_icons["vol_up"]
             internal_volume_counter += 1
 
     elif gesture == "v":
         kcontrol.press(Key.media_volume_down)
+        kcontrol.release(Key.media_volume_down)
         icon_sprite.image = action_icons["vol_down"]
         internal_volume_counter -= 1
 
     elif gesture == "triangle" or gesture == "rectangle":
         kcontrol.press(Key.media_play_pause)
+        kcontrol.release(Key.media_play_pause)
         icon_sprite.image = action_icons["play"]
 
     elif gesture == "check":
         kcontrol.press(Key.media_next)
+        kcontrol.release(Key.media_next)
         icon_sprite.image = action_icons["next"]
 
     elif gesture == "circle":
         kcontrol.press(Key.media_previous)
+        kcontrol.release(Key.media_previous)
         icon_sprite.image = action_icons["previous"]
 
 def animate_icon(dt=0):
